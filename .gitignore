@@ -12,5 +12,8 @@ wheels/
 
 # Project-specific
 .env
-state.json
+pages.txt
+state/
 debug/
+cron.log
+.monitor.lock

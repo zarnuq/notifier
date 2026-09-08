@@ -1,7 +1,7 @@
 [project]
-name = "lionsurplus"
+name = "facebook-post-notifier"
 version = "0.1.0"
-description = "Polls Lion Surplus' Facebook page and posts new items to Discord"
+description = "Polls Facebook pages and posts new items to Discord"
 requires-python = ">=3.13"
 dependencies = [
     "playwright>=1.47",

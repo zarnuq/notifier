@@ -1,4 +1,4 @@
-"""Fetches and parses posts from Lion Surplus' Facebook page.
+"""Fetches and parses posts from a Facebook page.
 
 Facebook blocks plain HTTP requests and walls its main page behind a login
 dialog after one post. The Facebook Page Plugin (the embeddable widget FB
@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import html as html_lib
 import re
+import urllib.parse
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,18 +19,11 @@ from playwright.sync_api import sync_playwright
 
 DEBUG_DIR = Path(__file__).parent / "debug"
 
-PLUGIN_URL = (
-    "https://www.facebook.com/plugins/page.php"
-    "?href=https%3A%2F%2Fwww.facebook.com%2FLionSurplus"
-    "&tabs=timeline&width=500&height=2000"
-    "&small_header=true&adapt_container_width=true"
-    "&hide_cover=false&show_facepile=false"
-)
+_PAGE_SLUG_RE = re.compile(r"facebook\.com/(?:pg/)?([^/?#]+)", re.IGNORECASE)
 
 # One per post; a legacy, non-hashed class combo that has stayed stable
 # across the plugin's classic HTML rendering path.
 _POST_BLOCK_MARKER = '<div class="_4-u2 mbm _4mrt _5jmm _5pat _5v3q _7cqq _4-u8"'
-_PERMALINK_RE = re.compile(r"/LionSurplus/posts/(pfbid[A-Za-z0-9]+)")
 _UTIME_RE = re.compile(r'data-utime="(\d+)"')
 _POST_MESSAGE_MARKER = 'data-testid="post_message"'
 # t39.30808-6 is Facebook's CDN path segment for timeline photos;
@@ -37,6 +31,8 @@ _POST_MESSAGE_MARKER = 'data-testid="post_message"'
 # needing the image to actually load.
 _IMAGE_RE = re.compile(r'src="([^"]*?/v/t39\.30808-6/[^"]*)"')
 _TAG_RE = re.compile(r"<[^>]+>")
+_BR_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
+_PARAGRAPH_END_RE = re.compile(r"</p>", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -44,65 +40,94 @@ class Post:
     id: str
     text: str
     url: str
-    image_url: str | None
+    image_urls: tuple[str, ...]
     posted_at: int  # unix epoch seconds
 
 
-def fetch_posts() -> list[Post]:
+def page_slug(page_url: str) -> str:
+    """Extracts the page name from a Facebook page URL"""
+    match = _PAGE_SLUG_RE.search(page_url)
+    if not match:
+        raise ValueError(f"Not a Facebook page URL: {page_url!r}")
+    return match.group(1)
+
+
+def _plugin_url(page_url: str) -> str:
+    encoded = urllib.parse.quote(page_url, safe="")
+    return (
+        "https://www.facebook.com/plugins/page.php"
+        f"?href={encoded}"
+        "&tabs=timeline&width=500&height=2000"
+        "&small_header=true&adapt_container_width=true"
+        "&hide_cover=false&show_facepile=false"
+    )
+
+
+def fetch_posts(page_url: str) -> list[Post]:
     """Fetches the current posts by rendering the Page Plugin in a headless browser."""
+    slug = page_slug(page_url)
     with sync_playwright() as p:
         browser = p.chromium.launch()
         try:
             page = browser.new_page()
-            page.goto(PLUGIN_URL, wait_until="networkidle")
+            page.goto(_plugin_url(page_url), wait_until="networkidle")
             page.wait_for_selector('a[href*="pfbid"]', timeout=15_000)
             content = page.content()
         finally:
             browser.close()
 
-    posts = parse_posts(content)
+    posts = parse_posts(content, slug)
     if not posts:
-        _dump_debug_html(content)
+        _dump_debug_html(content, slug)
     return posts
 
 
-def _dump_debug_html(content: str) -> None:
+def _dump_debug_html(content: str, slug: str) -> None:
     DEBUG_DIR.mkdir(exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    (DEBUG_DIR / f"empty-fetch-{stamp}.html").write_text(content, encoding="utf-8")
+    (DEBUG_DIR / f"empty-fetch-{slug}-{stamp}.html").write_text(content, encoding="utf-8")
 
 
-def parse_posts(html: str) -> list[Post]:
+def parse_posts(html: str, slug: str) -> list[Post]:
     """Parses posts out of rendered Page Plugin HTML. Pure function, no I/O."""
+    permalink_re = re.compile(rf"/{re.escape(slug)}/posts/(pfbid[A-Za-z0-9]+)")
     blocks = html.split(_POST_BLOCK_MARKER)[1:]
     posts: list[Post] = []
     seen: set[str] = set()
     for block in blocks:
-        match = _PERMALINK_RE.search(block)
+        match = permalink_re.search(block)
         if not match:
             continue
         post_id = match.group(1)
         if post_id in seen:
             continue
         seen.add(post_id)
-        posts.append(_parse_block(post_id, block))
+        posts.append(_parse_block(post_id, block, slug))
     return posts
 
 
-def _parse_block(post_id: str, block: str) -> Post:
+def _parse_block(post_id: str, block: str, slug: str) -> Post:
     utime_match = _UTIME_RE.search(block)
     posted_at = int(utime_match.group(1)) if utime_match else 0
-
-    image_match = _IMAGE_RE.search(block)
-    image_url = html_lib.unescape(image_match.group(1)) if image_match else None
 
     return Post(
         id=post_id,
         text=_extract_post_text(block),
-        url=f"https://www.facebook.com/LionSurplus/posts/{post_id}",
-        image_url=image_url,
+        url=f"https://www.facebook.com/{slug}/posts/{post_id}",
+        image_urls=_extract_image_urls(block),
         posted_at=posted_at,
     )
+
+
+def _extract_image_urls(block: str) -> tuple[str, ...]:
+    seen: set[str] = set()
+    urls: list[str] = []
+    for match in _IMAGE_RE.finditer(block):
+        url = html_lib.unescape(match.group(1))
+        if url not in seen:
+            seen.add(url)
+            urls.append(url)
+    return tuple(urls)
 
 
 def _extract_post_text(block: str) -> str:
@@ -111,9 +136,20 @@ def _extract_post_text(block: str) -> str:
         return ""
     div_start = block.rfind("<div", 0, marker_idx)
     content = _balanced_div_content(block, div_start)
+    # <br> and </p> carry the post's real line/paragraph breaks; every other
+    # tag is stripped, so those breaks must be captured before the tag-strip.
+    content = _BR_RE.sub("\n", content)
+    content = _PARAGRAPH_END_RE.sub("\n\n", content)
     text = _TAG_RE.sub(" ", content)
     text = html_lib.unescape(text)
-    return re.sub(r"\s+", " ", text).strip()
+    return _normalize_whitespace(text)
+
+
+def _normalize_whitespace(text: str) -> str:
+    lines = [re.sub(r"[ \t]+", " ", line).strip() for line in text.splitlines()]
+    text = "\n".join(lines)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
 
 
 def _balanced_div_content(chunk: str, div_start: int) -> str:

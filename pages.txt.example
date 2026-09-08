@@ -1,0 +1,13 @@
+# One Facebook page per line: <page URL> [webhook URL] [interval=<duration> | at="<cron expr>"]
+# - webhook URL is optional — omit it to use DISCORD_WEBHOOK_URL from .env.
+#   Use $VAR_NAME (defined in .env) instead of a literal URL here — this file
+#   is meant to be safe to commit/share, .env is not.
+# - interval is optional — how often to poll (e.g. 15m, 6h, 1d). Defaults to 1d.
+# - at is optional — poll at exact time(s) instead, standard 5-field cron
+#   syntax (minute hour day month weekday), e.g. at="0 7 * * *" = daily at 7am.
+#   Use interval= OR at=, not both.
+# Either way, this only works if the script itself runs at least that often
+# (or every minute, for at=) — see the crontab entry.
+# Lines starting with # are ignored.
+#
+# Example: https://www.facebook.com/SomePage webhook=$SOMEPAGE_WEBHOOK_URL at="0 7 * * *"
