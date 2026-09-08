@@ -1,0 +1,16 @@
+[project]
+name = "lionsurplus"
+version = "0.1.0"
+description = "Polls Lion Surplus' Facebook page and posts new items to Discord"
+requires-python = ">=3.13"
+dependencies = [
+    "playwright>=1.47",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
