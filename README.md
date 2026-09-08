@@ -25,7 +25,7 @@ line (lines starting with `#` are ignored). By default every page posts to
 `DISCORD_WEBHOOK_URL` and is polled once a day; override either per page:
 
 ```
-https://www.facebook.com/LionSurplus
+https://www.facebook.com/SomePage
 https://www.facebook.com/SomeOtherPage webhook=$SOMEOTHERPAGE_WEBHOOK_URL interval=15m
 https://www.facebook.com/AnotherPage at="0 7 * * *"
 ```
