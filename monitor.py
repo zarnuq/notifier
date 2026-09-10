@@ -81,7 +81,9 @@ def _load_state(state_path: Path) -> dict:
 
 def _save_state(state_path: Path, state: dict) -> None:
     state["last_polled_at"] = time.time()
-    state_path.write_text(json.dumps(state, indent=2))
+    tmp_path = state_path.with_suffix(state_path.suffix + ".tmp")
+    tmp_path.write_text(json.dumps(state, indent=2))
+    tmp_path.replace(state_path)
 
 
 def _load_dotenv(path: Path) -> None:
