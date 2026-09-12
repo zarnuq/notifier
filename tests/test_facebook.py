@@ -36,17 +36,22 @@ def test_posts_are_newest_first():
     assert timestamps == sorted(timestamps, reverse=True)
 
 
-def test_post_ids_are_unique_pfbids():
+def test_post_ids_are_unique():
     posts = parse_posts(FIXTURE, "LionSurplus")
     ids = [p.id for p in posts]
     assert len(ids) == len(set(ids))
-    assert all(i.startswith("pfbid") for i in ids)
 
 
-def test_permalink_uses_post_id():
+def test_post_id_is_stable_when_facebook_reissues_the_pfbid():
+    posts = parse_posts(FIXTURE, "LionSurplus")
+    reissued = FIXTURE.replace("pfbid0", "pfbid9")
+    assert [p.id for p in parse_posts(reissued, "LionSurplus")] == [p.id for p in posts]
+
+
+def test_permalink_uses_the_pfbid():
     posts = parse_posts(FIXTURE, "LionSurplus")
     for post in posts:
-        assert post.url == f"https://www.facebook.com/LionSurplus/posts/{post.id}"
+        assert post.url.startswith("https://www.facebook.com/LionSurplus/posts/pfbid")
 
 
 def test_extracts_post_text():

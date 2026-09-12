@@ -8,6 +8,7 @@ embed surface that renders ~5 posts to a logged-out browser.
 
 from __future__ import annotations
 
+import hashlib
 import html as html_lib
 import re
 import urllib.parse
@@ -37,7 +38,7 @@ _PARAGRAPH_END_RE = re.compile(r"</p>", re.IGNORECASE)
 
 @dataclass(frozen=True)
 class Post:
-    id: str
+    id: str  # stable across polls, unlike the pfbid in url
     text: str
     url: str
     image_urls: tuple[str, ...]
@@ -98,25 +99,34 @@ def parse_posts(html: str, slug: str) -> list[Post]:
         match = permalink_re.search(block)
         if not match:
             continue
-        post_id = match.group(1)
-        if post_id in seen:
+        post = _parse_block(match.group(1), block, slug)
+        if post.id in seen:
             continue
-        seen.add(post_id)
-        posts.append(_parse_block(post_id, block, slug))
+        seen.add(post.id)
+        posts.append(post)
     return posts
 
 
-def _parse_block(post_id: str, block: str, slug: str) -> Post:
+def _parse_block(permalink_id: str, block: str, slug: str) -> Post:
     utime_match = _UTIME_RE.search(block)
     posted_at = int(utime_match.group(1)) if utime_match else 0
+    text = _extract_post_text(block)
 
     return Post(
-        id=post_id,
-        text=_extract_post_text(block),
-        url=f"https://www.facebook.com/{slug}/posts/{post_id}",
+        id=_stable_id(posted_at, text),
+        text=text,
+        url=f"https://www.facebook.com/{slug}/posts/{permalink_id}",
         image_urls=_extract_image_urls(block),
         posted_at=posted_at,
     )
+
+
+def _stable_id(posted_at: int, text: str) -> str:
+    # Facebook re-encodes a post's pfbid on every render, so it identifies the
+    # permalink but not the post; data-utime is the same on every fetch.
+    if posted_at:
+        return str(posted_at)
+    return "t" + hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
 def _extract_image_urls(block: str) -> tuple[str, ...]:
