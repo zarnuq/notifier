@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import html as html_lib
+import json
 import re
 import urllib.parse
 from dataclasses import dataclass
@@ -71,9 +72,10 @@ def fetch_posts(page_url: str) -> list[Post]:
         browser = p.chromium.launch()
         try:
             page = browser.new_page()
-            page.goto(_plugin_url(page_url), wait_until="networkidle")
-            page.wait_for_selector('a[href*="pfbid"]', timeout=15_000)
-            content = page.content()
+            # The plugin's own JS no longer inserts the timeline into the DOM, so read the XHR that carries it.
+            with page.expect_response(lambda r: "/plugin/tab/renderer/" in r.url, timeout=15_000) as resp:
+                page.goto(_plugin_url(page_url), wait_until="networkidle")
+            content = _renderer_markup(resp.value.text())
         finally:
             browser.close()
 
@@ -81,6 +83,11 @@ def fetch_posts(page_url: str) -> list[Post]:
     if not posts:
         _dump_debug_html(content, slug)
     return posts
+
+
+def _renderer_markup(body: str) -> str:
+    """Extracts the timeline HTML from a tab/renderer response body."""
+    return json.loads(body.removeprefix("for (;;);"))["payload"]["content"]["markup"]["__html"]
 
 
 def _dump_debug_html(content: str, slug: str) -> None:

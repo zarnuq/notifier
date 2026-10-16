@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from facebook import page_slug, parse_posts
+from facebook import _renderer_markup, page_slug, parse_posts
 
 FIXTURE = (Path(__file__).parent / "fixtures" / "plugin.html").read_text(encoding="utf-8")
 
@@ -110,6 +110,11 @@ def test_posted_at_is_a_real_unix_timestamp():
     posts = parse_posts(FIXTURE, "LionSurplus")
     for post in posts:
         assert post.posted_at > 1_700_000_000  # sometime after Nov 2023
+
+
+def test_renderer_markup_unwraps_the_json_html_payload():
+    body = 'for (;;);{"payload":{"content":{"markup":{"__html":"<div>hi</div>"}}}}'
+    assert _renderer_markup(body) == "<div>hi</div>"
 
 
 def test_no_posts_returns_empty_list():
