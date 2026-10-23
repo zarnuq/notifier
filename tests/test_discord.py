@@ -147,6 +147,9 @@ def test_send_posts_json_to_webhook(monkeypatch):
         def __exit__(self, *a):
             return False
 
+        def read(self):
+            return b""  # a real 204 body, which send() parses as "no content"
+
     def fake_urlopen(request, timeout=10):
         captured["url"] = request.full_url
         captured["data"] = json.loads(request.data)
@@ -170,3 +173,87 @@ def test_send_raises_on_http_error(monkeypatch):
 
     with pytest.raises(urllib.error.HTTPError):
         discord.send("https://discord.example/webhook", {"content": "hi"})
+
+
+class _FakeResponse:
+    status = 200
+
+    def __init__(self, body=b""):
+        self._body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def read(self):
+        return self._body
+
+
+def test_post_asks_discord_to_return_the_message_and_yields_its_id(monkeypatch):
+    captured = {}
+
+    def fake_urlopen(request, timeout=10):
+        captured["url"] = request.full_url
+        captured["method"] = request.get_method()
+        return _FakeResponse(b'{"id": "12345"}')
+
+    monkeypatch.setattr(discord.urllib.request, "urlopen", fake_urlopen)
+
+    message_id = discord.post("https://discord.example/webhook", {"content": "hi"})
+
+    # Without wait=true Discord replies 204 with no body, and there'd be no id
+    # to edit later.
+    assert captured["url"] == "https://discord.example/webhook?wait=true"
+    assert captured["method"] == "POST"
+    assert message_id == "12345"
+
+
+def test_post_appends_wait_to_a_url_that_already_has_a_query(monkeypatch):
+    captured = {}
+
+    def fake_urlopen(request, timeout=10):
+        captured["url"] = request.full_url
+        return _FakeResponse(b'{"id": "1"}')
+
+    monkeypatch.setattr(discord.urllib.request, "urlopen", fake_urlopen)
+    discord.post("https://discord.example/webhook?thread_id=7", {"content": "hi"})
+
+    assert captured["url"] == "https://discord.example/webhook?thread_id=7&wait=true"
+
+
+def test_edit_patches_the_message_endpoint(monkeypatch):
+    captured = {}
+
+    def fake_urlopen(request, timeout=10):
+        captured["url"] = request.full_url
+        captured["method"] = request.get_method()
+        return _FakeResponse(b'{"id": "12345"}')
+
+    monkeypatch.setattr(discord.urllib.request, "urlopen", fake_urlopen)
+
+    assert discord.edit("https://discord.example/webhook", "12345", {"content": "hi"}) is True
+    assert captured["url"] == "https://discord.example/webhook/messages/12345"
+    assert captured["method"] == "PATCH"
+
+
+def test_edit_reports_a_deleted_message_rather_than_raising(monkeypatch):
+    def fake_urlopen(request, timeout=10):
+        raise urllib.error.HTTPError(request.full_url, 404, "Not Found", {}, None)
+
+    monkeypatch.setattr(discord.urllib.request, "urlopen", fake_urlopen)
+
+    # The caller falls back to posting fresh, so a hand-deleted message must
+    # not take the run down.
+    assert discord.edit("https://discord.example/webhook", "12345", {"content": "hi"}) is False
+
+
+def test_edit_still_raises_on_errors_that_are_not_404(monkeypatch):
+    def fake_urlopen(request, timeout=10):
+        raise urllib.error.HTTPError(request.full_url, 500, "Server Error", {}, None)
+
+    monkeypatch.setattr(discord.urllib.request, "urlopen", fake_urlopen)
+
+    with pytest.raises(urllib.error.HTTPError):
+        discord.edit("https://discord.example/webhook", "12345", {"content": "hi"})

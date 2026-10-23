@@ -18,6 +18,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, NamedTuple
 
+import discord
+import facebook
+from common import load_dotenv, write_json_atomic
 from facebook import Post, page_slug
 
 FAILURE_ALERT_THRESHOLD = 6  # consecutive empty polls of a page before alerting
@@ -81,20 +84,7 @@ def _load_state(state_path: Path) -> dict:
 
 def _save_state(state_path: Path, state: dict) -> None:
     state["last_polled_at"] = time.time()
-    tmp_path = state_path.with_suffix(state_path.suffix + ".tmp")
-    tmp_path.write_text(json.dumps(state, indent=2))
-    tmp_path.replace(state_path)
-
-
-def _load_dotenv(path: Path) -> None:
-    if not path.exists():
-        return
-    for line in path.read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        os.environ.setdefault(key.strip(), value.strip())
+    write_json_atomic(state_path, state)
 
 
 class PageConfig(NamedTuple):
@@ -271,10 +261,7 @@ def main() -> None:
     parser.add_argument("--lock", type=Path, default=DEFAULT_LOCK_PATH, help="lock file guarding against overlapping runs")
     args = parser.parse_args()
 
-    _load_dotenv(Path(__file__).parent / ".env")
-
-    import facebook
-
+    load_dotenv(Path(__file__).parent / ".env")
     pages = _load_pages(args.pages)
 
     if args.dry_run:
@@ -288,8 +275,6 @@ def main() -> None:
         return  # a previous run is still in progress
 
     try:
-        import discord
-
         default_webhook_url = os.environ.get("DISCORD_WEBHOOK_URL")
 
         args.state_dir.mkdir(exist_ok=True)

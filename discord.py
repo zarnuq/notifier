@@ -5,13 +5,14 @@ from __future__ import annotations
 import colorsys
 import json
 import re
+import urllib.error
 import urllib.request
 import zlib
 from datetime import datetime, timezone
 
 from facebook import Post, page_slug
 
-_DESCRIPTION_LIMIT = 4096  # Discord embed description character limit
+DESCRIPTION_LIMIT = 4096  # Discord embed description character limit
 _TITLE_LIMIT = 256  # Discord embed title character limit
 _TITLE_WORD_LIMIT = 12
 _MAX_EMBEDS = 10  # Discord message limit
@@ -59,7 +60,7 @@ def _build_description(post: Post) -> str:
         parts.append(f"🕒 <t:{post.posted_at}:F> • <t:{post.posted_at}:R>")
     if post.text:
         parts.append(post.text)
-    return "\n\n".join(parts)[:_DESCRIPTION_LIMIT]
+    return "\n\n".join(parts)[:DESCRIPTION_LIMIT]
 
 
 def _title_from_text(text: str, word_limit: int = _TITLE_WORD_LIMIT) -> str:
@@ -80,12 +81,44 @@ def _truncate(text: str, limit: int) -> str:
 
 
 def send(webhook_url: str, payload: dict) -> None:
+    _request(webhook_url, payload, "POST")
+
+
+def post(webhook_url: str, payload: dict) -> str | None:
+    """Sends a message and returns its id, so it can be edited later.
+
+    ?wait=true makes Discord respond with the created message instead of an
+    empty 204.
+    """
+    separator = "&" if "?" in webhook_url else "?"
+    body = _request(f"{webhook_url}{separator}wait=true", payload, "POST")
+    return body.get("id") if body else None
+
+
+def edit(webhook_url: str, message_id: str, payload: dict) -> bool:
+    """Rewrites a previous webhook message in place.
+
+    Returns False if the message no longer exists (deleted by hand, say), so
+    the caller can fall back to posting a fresh one.
+    """
+    try:
+        _request(f"{webhook_url}/messages/{message_id}", payload, "PATCH")
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return False
+        raise
+    return True
+
+
+def _request(url: str, payload: dict, method: str) -> dict | None:
     request = urllib.request.Request(
-        webhook_url,
+        url,
         data=json.dumps(payload).encode("utf-8"),
         headers={"Content-type": "application/json", "User-Agent": "Mozilla/5.0"},
-        method="POST",
+        method=method,
     )
     with urllib.request.urlopen(request, timeout=10) as response:
         if response.status >= 300:
             raise RuntimeError(f"Discord webhook returned status {response.status}")
+        body = response.read()
+    return json.loads(body) if body else None

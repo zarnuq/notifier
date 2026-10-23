@@ -17,3 +17,4 @@ state/
 debug/
 cron.log
 .monitor.lock
+.gcroot

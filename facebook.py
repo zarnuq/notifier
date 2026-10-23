@@ -17,8 +17,6 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from playwright.sync_api import sync_playwright
-
 DEBUG_DIR = Path(__file__).parent / "debug"
 
 _PAGE_SLUG_RE = re.compile(r"facebook\.com/(?:pg/)?([^/?#]+)", re.IGNORECASE)
@@ -67,6 +65,10 @@ def _plugin_url(page_url: str) -> str:
 
 def fetch_posts(page_url: str) -> list[Post]:
     """Fetches the current posts by rendering the Page Plugin in a headless browser."""
+    # Imported here so the parsing helpers (and menu.py, via discord.py) don't
+    # need Playwright installed.
+    from playwright.sync_api import sync_playwright
+
     slug = page_slug(page_url)
     with sync_playwright() as p:
         browser = p.chromium.launch()
