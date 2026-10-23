@@ -186,11 +186,7 @@ def build_description(menus: list[tuple[str, list[tuple[str, list[Item]]]]], whe
     blocks = [f"# {when:%A, %B %-d}"]
     blocks += [render_meal(meal, cats) for meal, cats in menus]
 
-    standing: list[str] = []
-    for _, cats in menus:
-        for name in _standing_names(cats):
-            if name not in standing:
-                standing.append(name)
+    standing = list(dict.fromkeys(name for _, cats in menus for name in _standing_names(cats)))
     if standing:
         # -# is Discord's small-text markdown, which de-emphasises the line.
         blocks.append("-# Always: " + ", ".join(standing))
@@ -263,7 +259,6 @@ def _load_state(path: Path) -> dict:
         return json.loads(path.read_text())
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
-
 
 
 if __name__ == "__main__":

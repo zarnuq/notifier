@@ -1,7 +1,4 @@
 import json
-import os
-import subprocess
-import sys
 from datetime import datetime
 
 import pytest
@@ -372,37 +369,13 @@ def test_breakage_alert_only_fires_once_per_outage(state_path):
     assert alerts == []
 
 
-def test_acquire_lock_succeeds_when_no_lock_exists(tmp_path):
+def test_acquire_lock_fails_while_another_holder_has_it(tmp_path):
     lock_path = tmp_path / ".monitor.lock"
-    assert monitor._acquire_lock(lock_path) is True
-    assert lock_path.exists()
+    first = monitor._acquire_lock(lock_path)
+    assert first is not None
+    assert monitor._acquire_lock(lock_path) is None
 
-
-def test_acquire_lock_fails_when_holder_is_alive(tmp_path):
-    lock_path = tmp_path / ".monitor.lock"
-    lock_path.write_text(str(os.getpid()))  # our own pid is definitely alive
-
-    assert monitor._acquire_lock(lock_path) is False
-
-
-def test_acquire_lock_steals_lock_from_dead_pid(tmp_path):
-    lock_path = tmp_path / ".monitor.lock"
-    dead_process = subprocess.Popen([sys.executable, "-c", "pass"])
-    dead_process.wait()
-    lock_path.write_text(str(dead_process.pid))
-
-    assert monitor._acquire_lock(lock_path) is True
-    assert lock_path.read_text() == str(os.getpid())
-
-
-def test_release_lock_removes_file(tmp_path):
-    lock_path = tmp_path / ".monitor.lock"
-    lock_path.write_text(str(os.getpid()))
-
-    monitor._release_lock(lock_path)
-
-    assert not lock_path.exists()
-
-
-def test_release_lock_missing_file_is_noop(tmp_path):
-    monitor._release_lock(tmp_path / "missing.lock")  # must not raise
+    first.close()
+    second = monitor._acquire_lock(lock_path)
+    assert second is not None
+    second.close()

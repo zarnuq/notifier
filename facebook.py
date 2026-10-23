@@ -139,14 +139,7 @@ def _stable_id(posted_at: int, text: str) -> str:
 
 
 def _extract_image_urls(block: str) -> tuple[str, ...]:
-    seen: set[str] = set()
-    urls: list[str] = []
-    for match in _IMAGE_RE.finditer(block):
-        url = html_lib.unescape(match.group(1))
-        if url not in seen:
-            seen.add(url)
-            urls.append(url)
-    return tuple(urls)
+    return tuple(dict.fromkeys(html_lib.unescape(url) for url in _IMAGE_RE.findall(block)))
 
 
 def _extract_post_text(block: str) -> str:

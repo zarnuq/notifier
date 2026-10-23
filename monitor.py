@@ -8,6 +8,7 @@ real implementations for actual use, once per page listed in pages.txt.
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
 import re
@@ -225,32 +226,19 @@ def _is_due(page: PageConfig, state_path: Path, now: float | None = None) -> boo
     return (now - last_polled_at) >= page.interval_seconds
 
 
-def _acquire_lock(lock_path: Path) -> bool:
+def _acquire_lock(lock_path: Path):
+    """Returns the open lock file, or None if another run holds it.
+
+    flock is released by the kernel when the holder exits, even on a crash,
+    so there's no stale lock to detect or clean up.
+    """
+    lock_file = open(lock_path, "w")
     try:
-        fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    except FileExistsError:
-        if _lock_holder_is_alive(lock_path):
-            return False
-        try:
-            fd = os.open(lock_path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC)
-        except OSError:
-            return False
-    with os.fdopen(fd, "w") as f:
-        f.write(str(os.getpid()))
-    return True
-
-
-def _lock_holder_is_alive(lock_path: Path) -> bool:
-    try:
-        pid = int(lock_path.read_text().strip())
-        os.kill(pid, 0)
-        return True
-    except (ValueError, ProcessLookupError, PermissionError, FileNotFoundError):
-        return False
-
-
-def _release_lock(lock_path: Path) -> None:
-    lock_path.unlink(missing_ok=True)
+        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        lock_file.close()
+        return None
+    return lock_file
 
 
 def main() -> None:
@@ -271,10 +259,11 @@ def main() -> None:
                 print(f"[{post.id}] {post.text[:80]!r} images={list(post.image_urls)}")
         return
 
-    if not _acquire_lock(args.lock):
+    lock_file = _acquire_lock(args.lock)
+    if lock_file is None:
         return  # a previous run is still in progress
 
-    try:
+    with lock_file:
         default_webhook_url = os.environ.get("DISCORD_WEBHOOK_URL")
 
         args.state_dir.mkdir(exist_ok=True)
@@ -309,8 +298,6 @@ def main() -> None:
                 # One page erroring out (e.g. a Playwright timeout) shouldn't
                 # stop the rest of the configured pages from being checked.
                 alert(f"The {slug} monitor crashed: {exc}")
-    finally:
-        _release_lock(args.lock)
 
 
 if __name__ == "__main__":
