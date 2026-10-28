@@ -16,6 +16,7 @@ DESCRIPTION_LIMIT = 4096  # Discord embed description character limit
 _TITLE_LIMIT = 256  # Discord embed title character limit
 _TITLE_WORD_LIMIT = 12
 _MAX_EMBEDS = 10  # Discord message limit
+_USERNAME_LIMIT = 80  # Discord webhook username character limit
 
 
 def build_embed(post: Post) -> dict:
@@ -23,7 +24,6 @@ def build_embed(post: Post) -> dict:
     slug = page_slug(post.url)
     color = _color_for_page(slug)
     embed = {
-        "author": {"name": _author_name(slug)},
         "title": _title_from_text(text) if text else "New post",
         "url": post.url,
         "description": _build_description(post),
@@ -38,7 +38,12 @@ def build_embed(post: Post) -> dict:
     if images:
         embed["image"] = {"url": images[0]}
     embeds = [embed] + [{"url": post.url, "image": {"url": image}, "color": color} for image in images[1:]]
-    return {"embeds": embeds}
+    # username/avatar_url override the webhook's own name and picture, so each
+    # page posts as itself even when several share one webhook.
+    payload = {"username": (post.author or _author_name(slug))[:_USERNAME_LIMIT], "embeds": embeds}
+    if post.avatar_url:
+        payload["avatar_url"] = post.avatar_url
+    return payload
 
 
 def _author_name(slug: str) -> str:

@@ -214,7 +214,7 @@ def _load_pages(path: Path) -> list[PageConfig]:
 def _is_due(page: PageConfig, state_path: Path, now: float | None = None) -> bool:
     if not state_path.exists():
         return True
-    last_polled_at = json.loads(state_path.read_text()).get("last_polled_at", 0)
+    last_polled_at = _load_state(state_path)["last_polled_at"]
     now = time.time() if now is None else now
 
     if page.schedule is not None:

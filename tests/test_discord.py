@@ -1,3 +1,4 @@
+import dataclasses
 import json
 import urllib.error
 
@@ -20,9 +21,17 @@ def make_post(text="hello", image_urls=()):
 def test_embed_has_author_text_and_link():
     payload = discord.build_embed(make_post(text="bread day tomorrow"))
     embed = payload["embeds"][0]
-    assert embed["author"]["name"] == "Lion Surplus"
+    assert payload["username"] == "Lion Surplus"  # derived from the slug
+    assert "avatar_url" not in payload
     assert embed["description"] == "🕒 <t:1700000000:F> • <t:1700000000:R>\n\nbread day tomorrow"
     assert embed["url"] == "https://www.facebook.com/LionSurplus/posts/pfbid001"
+
+
+def test_payload_posts_as_the_scraped_page_name_and_avatar():
+    post = dataclasses.replace(make_post(), author="Lion Surplus Store", avatar_url="https://cdn/a.jpg")
+    payload = discord.build_embed(post)
+    assert payload["username"] == "Lion Surplus Store"
+    assert payload["avatar_url"] == "https://cdn/a.jpg"
 
 
 def test_embed_description_starts_with_formatted_post_date():

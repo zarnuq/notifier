@@ -198,7 +198,6 @@ def build_payload(menus: list[tuple[str, list[tuple[str, list[Item]]]]], when: d
     return {
         "embeds": [
             {
-                "author": {"name": "Waring Commons"},
                 "description": build_description(menus, when),
                 "color": _PSU_BLUE,
                 "footer": {"text": "West Food District @ Waring · 🌱 vegan · 🌾 gluten friendly"},
@@ -247,7 +246,8 @@ def main() -> None:
             return
         print("Previous message is gone; posting a new one.")
 
-    message_id = post(webhook_url, payload)
+    # Only on the first post: editing a webhook message can't change its sender.
+    message_id = post(webhook_url, {**payload, "username": "Waring Commons"})
     write_json_atomic(
         state_path, {"date": today.isoformat(), "digest": digest, "message_id": message_id}
     )

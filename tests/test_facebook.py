@@ -106,6 +106,14 @@ def test_image_urls_do_not_include_the_page_avatar():
             assert "/v/t39.30808-1/" not in url
 
 
+def test_posts_carry_page_name_and_avatar():
+    posts = parse_posts(FIXTURE, "LionSurplus")
+    for post in posts:
+        assert post.author == "Lion Surplus"
+        assert "/v/t39.30808-1/" in post.avatar_url
+        assert "&amp;" not in post.avatar_url
+
+
 def test_posted_at_is_a_real_unix_timestamp():
     posts = parse_posts(FIXTURE, "LionSurplus")
     for post in posts:

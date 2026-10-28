@@ -30,6 +30,7 @@ _POST_MESSAGE_MARKER = 'data-testid="post_message"'
 # t39.30808-1 is profile/avatar pictures. This tells them apart without
 # needing the image to actually load.
 _IMAGE_RE = re.compile(r'src="([^"]*?/v/t39\.30808-6/[^"]*)"')
+_AVATAR_RE = re.compile(r'<img[^>]*src="([^"]*?/v/t39\.30808-1/[^"]*)"[^>]*aria-label="([^"]*)"')
 _TAG_RE = re.compile(r"<[^>]+>")
 _BR_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
 _PARAGRAPH_END_RE = re.compile(r"</p>", re.IGNORECASE)
@@ -42,6 +43,8 @@ class Post:
     url: str
     image_urls: tuple[str, ...]
     posted_at: int  # unix epoch seconds
+    author: str = ""  # page display name, e.g. "Lion Surplus"
+    avatar_url: str = ""
 
 
 def page_slug(page_url: str) -> str:
@@ -120,6 +123,7 @@ def _parse_block(permalink_id: str, block: str, slug: str) -> Post:
     utime_match = _UTIME_RE.search(block)
     posted_at = int(utime_match.group(1)) if utime_match else 0
     text = _extract_post_text(block)
+    avatar_match = _AVATAR_RE.search(block)
 
     return Post(
         id=_stable_id(posted_at, text),
@@ -127,6 +131,8 @@ def _parse_block(permalink_id: str, block: str, slug: str) -> Post:
         url=f"https://www.facebook.com/{slug}/posts/{permalink_id}",
         image_urls=_extract_image_urls(block),
         posted_at=posted_at,
+        author=html_lib.unescape(avatar_match.group(2)) if avatar_match else "",
+        avatar_url=html_lib.unescape(avatar_match.group(1)) if avatar_match else "",
     )
 
 
